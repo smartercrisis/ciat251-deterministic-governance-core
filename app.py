@@ -4,7 +4,7 @@ import hashlib
 import pypdf
 import numpy as np
 import pandas as pd
-from datetime import datetime
+from datetime import datetime, timezone
 from sentence_transformers import SentenceTransformer
 
 st.set_page_config(page_title="CIAT25 Core Interceptor", layout="wide")
@@ -61,7 +61,7 @@ def gate_zero(query_text: str, anchor_embeddings: list[np.ndarray], threshold: f
 # --- Gate 1: Anchor Confidence Engine (Atomic Claims & Soft-Min) ---
 class Gate1AnchorConfidenceEngine:
     def __init__(self, beta: float = 10.0, min_claim_threshold: float = 0.82):
-        self.beta = beta  # Sharpness factor for Soft-Min pessimistic weighting
+        self.beta = beta  
         self.min_claim_threshold = min_claim_threshold
 
     def _cosine_similarity(self, v1: np.ndarray, v2: np.ndarray) -> float:
@@ -149,7 +149,7 @@ with col2:
         anchor_embeddings = [model.encode(chunk, convert_to_numpy=True) for chunk in anchor_texts]
         st.info(f"Loaded active anchor corpus with {len(anchor_embeddings)} reference chunk(s).")
         
-        timestamp = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S UTC")
+        timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
         
         # 1. Execute Gate -1
         clean_text, g1_pass, g1_msg = gate_minus_one(user_input)
@@ -196,16 +196,16 @@ with col2:
                     "Timestamp": timestamp,
                     "Gate -1": "PASS",
                     "Gate 0": action,
-                    "Gate 1 Verdict": g1_result["verdict"],
-                    "Score": g1_result["confidence_score"],
-                    "Message": f"Log ID: {log_id} | Soft-Min: {g1_result['metrics']['soft_min_cosine']}"
+                    "Gate 1 Verdict": g1_result.get("verdict", "UNKNOWN"),
+                    "Score": g1_result.get("confidence_score", 0.0),
+                    "Message": f"Log ID: {log_id} | Soft-Min: {g1_result.get('metrics', {}).get('soft_min_cosine', 0.0)}"
                 }
                 st.session_state.telemetry_logs.append(log_entry)
                 
-                if g1_result["verdict"] == "PASS":
-                    st.success(f"Pipeline Cleared | Log ID: {log_id} | Gate 1 Confidence: {g1_result['confidence_score']}")
+                if g1_result.get("verdict") == "PASS":
+                    st.success(f"Pipeline Cleared | Log ID: {log_id} | Gate 1 Confidence: {g1_result.get('confidence_score')}")
                 else:
-                    st.error(f"Gate 1 Anchor Void Triggered | Log ID: {log_id} | Confidence: {g1_result['confidence_score']}")
+                    st.error(f"Gate 1 Anchor Void Triggered | Log ID: {log_id} | Confidence: {g1_result.get('confidence_score')}")
 
 # --- Interactive Telemetry Inspector & Audit Panel ---
 st.markdown("---")
@@ -219,7 +219,7 @@ if st.session_state.telemetry_logs:
     st.download_button(
         label="Export Audit Log (CSV)",
         data=csv_data,
-        file_name=f"ciat25_telemetry_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.csv",
+        file_name=f"ciat25_telemetry_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}.csv",
         mime="text/csv"
     )
 else:
