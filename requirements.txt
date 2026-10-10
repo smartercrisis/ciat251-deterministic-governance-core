@@ -1,5 +1,7 @@
 streamlit
 sentence-transformers
+torch
+torchvision
 numpy
 pandas
 pypdf
