@@ -42,7 +42,6 @@ def load_anchor_standard() -> tuple[list[str], list[str]]:
     if not corpus:
         corpus = [
             "All data processing must comply with local Personal Data Protection regulations and strict PII anonymization mandates.",
-            "Medical and commercial assertions must be bound to verifiable compliance rules without unauthorized liability exposure.",
             "Egypt PDP Law No. 151/2020 mandates local data sovereignty, air-gapped execution, and perimeter defense against cross-border data leakage.",
             "Local data retention compliance, internal customer metadata records, and Alexandria edge node processing ensure total sovereign control."
         ]
@@ -68,7 +67,6 @@ def gate_minus_one(raw_input: str) -> tuple[str, bool, str]:
     if len(cleaned) > 10000:
         return "", False, "Gate -1 Drop: Payload exceeds maximum length bounds (10,000 chars)."
         
-    # PDP Law PII Detection Patterns (Egyptian National ID, Phone, Email)
     egyptian_id_pattern = r'\b[23]\d{12}\b'
     phone_pattern = r'\b01[0125]\d{8}\b'
     email_pattern = r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b'
@@ -120,7 +118,6 @@ class Gate1PDPEnforcementEngine:
         anchor_embeddings: list[np.ndarray],
         forbidden_list: list[str]
     ) -> dict:
-        # 1. Deterministic Prohibited Assertion Check
         text_lower = text.lower()
         for forbidden in forbidden_list:
             if forbidden in text_lower:
@@ -211,12 +208,11 @@ with col2:
                 st.session_state.telemetry_logs.append(log_entry)
                 st.error(f"Trajectory Blocked at Gate 0: {g0_msg}")
             else:
-                # 3. Gate 1 (PDP Enforcement & Confidence Engine)
-                claim_sentences = [s.strip() for s in clean_text.split('.') if s.strip()]
-                if not claim_sentences:
-                    claim_sentences = [clean_text]
-                
-                claim_embeddings = [model.encode(claim, convert_to_numpy=True) for claim in claim_sentences]
+                # 3. Gate 1 (PDP Enforcement & Confidence Engine) - Holistic + Sentence Hybrid
+                claim_embeddings = [model.encode(clean_text, convert_to_numpy=True)]
+                for s in [sent.strip() for sent in clean_text.split('.') if sent.strip()]:
+                    if len(s) > 10:
+                        claim_embeddings.append(model.encode(s, convert_to_numpy=True))
                 
                 pdp_engine = Gate1PDPEnforcementEngine(min_claim_threshold=g1_threshold)
                 eval_result = pdp_engine.evaluate_payload(
