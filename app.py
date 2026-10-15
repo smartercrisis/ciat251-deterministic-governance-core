@@ -142,13 +142,19 @@ class Gate1PDPEnforcementEngine:
         )
 
         final_confidence = round(float(soft_min_score), 4)
-        verdict = "PASS" if final_confidence >= self.min_claim_threshold else "ANCHOR_VOID"
+        
+        if final_confidence >= self.min_claim_threshold:
+            verdict = "PASS"
+            reason = "Passed PDP & confidence bounds."
+        else:
+            verdict = "ANCHOR_VOID"
+            reason = f"Confidence score ({final_confidence}) below minimum required threshold ({self.min_claim_threshold})."
 
         return {
             "confidence_score": final_confidence,
             "metrics": {"soft_min_cosine": final_confidence},
             "verdict": verdict,
-            "reason": "Passed PDP & confidence bounds."
+            "reason": reason
         }
 
 # --- Sidebar Controls ---
@@ -247,7 +253,7 @@ if st.session_state.telemetry_logs:
         label="Export Legal Compliance Audit Log (CSV)",
         data=csv_data,
         file_name=f"pdp_audit_log_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}.csv",
-        mime="text/css"
+        mime="text/csv"
     )
 else:
     st.caption("No compliance telemetry recorded yet.")
