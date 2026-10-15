@@ -3,7 +3,6 @@ import re
 import hashlib
 import json
 import os
-import pypdf
 import numpy as np
 import pandas as pd
 from datetime import datetime, timezone
@@ -104,7 +103,7 @@ def gate_zero(query_text: str, anchor_embeddings: list[np.ndarray], threshold: f
 
 # --- Gate 1: Egress PDP & Anchor Confidence Engine ---
 class Gate1PDPEnforcementEngine:
-    def __init__(self, beta: float = 10.0, min_claim_threshold: float = 0.75):
+    def __init__(self, beta: float = 4.0, min_claim_threshold: float = 0.50):
         self.beta = beta  
         self.min_claim_threshold = min_claim_threshold
 
@@ -160,7 +159,7 @@ class Gate1PDPEnforcementEngine:
 st.sidebar.header("Sovereign Telemetry Controls")
 strict_mode = st.sidebar.checkbox("Enforce Hard Drop Mode", value=True)
 g0_threshold = st.sidebar.slider("Gate 0 Trajectory Threshold", min_value=0.05, max_value=0.50, value=0.20, step=0.05)
-g1_threshold = st.sidebar.slider("Gate 1 PDP Confidence Threshold", min_value=0.40, max_value=0.90, value=0.75, step=0.01)
+g1_threshold = st.sidebar.slider("Gate 1 PDP Confidence Threshold", min_value=0.30, max_value=0.80, value=0.50, step=0.01)
 
 if st.sidebar.button("Clear Audit History"):
     st.session_state.telemetry_logs = []
@@ -211,10 +210,10 @@ with col2:
                 # 3. Gate 1 (PDP Enforcement & Confidence Engine) - Holistic + Sentence Hybrid
                 claim_embeddings = [model.encode(clean_text, convert_to_numpy=True)]
                 for s in [sent.strip() for sent in clean_text.split('.') if sent.strip()]:
-                    if len(s) > 10:
+                    if len(s) > 25:
                         claim_embeddings.append(model.encode(s, convert_to_numpy=True))
                 
-                pdp_engine = Gate1PDPEnforcementEngine(min_claim_threshold=g1_threshold)
+                pdp_engine = Gate1PDPEnforcementEngine(beta=4.0, min_claim_threshold=g1_threshold)
                 eval_result = pdp_engine.evaluate_payload(
                     clean_text, 
                     claim_embeddings, 
@@ -251,7 +250,7 @@ if st.session_state.telemetry_logs:
         label="Export Legal Compliance Audit Log (CSV)",
         data=csv_data,
         file_name=f"pdp_audit_log_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}.csv",
-        mime="text/css"
+        mime="text/csv"
     )
 else:
     st.caption("No compliance telemetry recorded yet.")
