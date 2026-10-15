@@ -42,7 +42,9 @@ def load_anchor_standard() -> tuple[list[str], list[str]]:
     if not corpus:
         corpus = [
             "All data processing must comply with local Personal Data Protection regulations and strict PII anonymization mandates.",
-            "Medical and commercial assertions must be bound to verifiable compliance rules without unauthorized liability exposure."
+            "Medical and commercial assertions must be bound to verifiable compliance rules without unauthorized liability exposure.",
+            "Egypt PDP Law No. 151/2020 mandates local data sovereignty, air-gapped execution, and perimeter defense against cross-border data leakage.",
+            "Local data retention compliance, internal customer metadata records, and Alexandria edge node processing ensure total sovereign control."
         ]
     return corpus, prohibited
 
@@ -253,7 +255,7 @@ if st.session_state.telemetry_logs:
         label="Export Legal Compliance Audit Log (CSV)",
         data=csv_data,
         file_name=f"pdp_audit_log_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}.csv",
-        mime="text/csv"
+        mime="text/css"
     )
 else:
     st.caption("No compliance telemetry recorded yet.")
