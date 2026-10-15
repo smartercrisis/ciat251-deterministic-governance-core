@@ -1,6 +1,8 @@
 import streamlit as st
 import re
 import hashlib
+import json
+import os
 import pypdf
 import numpy as np
 import pandas as pd
@@ -18,9 +20,46 @@ def load_embedding_model():
 
 model = load_embedding_model()
 
-# Initialize session state for telemetry history
+# --- Native Anchor Standard Loader ---
+def load_anchor_standard() -> list[str]:
+    schema_path = "schemas/anchor_standard.json"
+    if os.path.exists(schema_path):
+        try:
+            with open(schema_path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                chunks = []
+                if isinstance(data, list):
+                    chunks = [str(item) for item in data]
+                elif isinstance(data, dict):
+                    for k, v in data.items():
+                        if isinstance(v, list):
+                            chunks.extend([str(item) for item in v])
+                        elif isinstance(v, dict):
+                            for sub_k, sub_v in v.items():
+                                chunks.append(f"{sub_k}: {sub_v}")
+                        else:
+                            chunks.append(f"{k}: {v}")
+                if chunks:
+                    return chunks
+        except Exception as e:
+            st.sidebar.warning(f"Failed to parse anchor_standard.json: {e}")
+            
+    # Fallback default corpus if JSON file is missing or empty
+    return [
+        "CIAT25 governance architecture, AI pipeline validation, token telemetry, and gate protocols.",
+        "Semantic cosine similarity, anchor chunks, trajectory sensor, and pre-generation filtering.",
+        "PostgreSQL pgvector, vector embeddings, anomaly detection, AI debt, and beautiful lie mitigation."
+    ]
+
+# Initialize Session State
 if "telemetry_logs" not in st.session_state:
     st.session_state.telemetry_logs = []
+
+if "anchor_texts" not in st.session_state:
+    st.session_state.anchor_texts = load_anchor_standard()
+
+if "anchor_embeddings" not in st.session_state:
+    st.session_state.anchor_embeddings = [model.encode(chunk, convert_to_numpy=True) for chunk in st.session_state.anchor_texts]
 
 # --- Gate -1: Ingress Filter ---
 def gate_minus_one(raw_input: str) -> tuple[str, bool, str]:
@@ -106,6 +145,11 @@ strict_mode = st.sidebar.checkbox("Enforce Hard Drop Mode", value=True)
 g0_threshold = st.sidebar.slider("Gate 0 Similarity Threshold", min_value=0.05, max_value=0.60, value=0.25, step=0.05)
 g1_threshold = st.sidebar.slider("Gate 1 Claim Threshold", min_value=0.50, max_value=0.95, value=0.82, step=0.01)
 
+if st.sidebar.button("Reset Anchors to Default JSON"):
+    st.session_state.anchor_texts = load_anchor_standard()
+    st.session_state.anchor_embeddings = [model.encode(chunk, convert_to_numpy=True) for chunk in st.session_state.anchor_texts]
+    st.sidebar.success("Reset active anchor corpus to anchor_standard.json.")
+
 if st.sidebar.button("Clear Log History"):
     st.session_state.telemetry_logs = []
     st.sidebar.success("Logs cleared.")
@@ -117,38 +161,35 @@ with col1:
     user_input = st.text_area("Enter query prompt or simulated output:", height=150)
     uploaded_file = st.file_uploader("Upload reference anchor document (txt, csv, pdf):", type=["txt", "csv", "pdf"])
 
+    # Handle dynamic file uploads and update session cache
+    if uploaded_file is not None:
+        file_extension = uploaded_file.name.split('.')[-1].lower()
+        file_text = ""
+        if file_extension == 'pdf':
+            try:
+                reader = pypdf.PdfReader(uploaded_file)
+                for page in reader.pages:
+                    file_text += page.extract_text() or ""
+            except Exception as e:
+                st.error(f"Error reading PDF: {e}")
+        elif file_extension in ['txt', 'csv']:
+            file_text = uploaded_file.read().decode("utf-8", errors="ignore")
+        
+        if file_text:
+            new_chunks = [chunk.strip() for chunk in file_text.split("\n\n") if chunk.strip()]
+            if not new_chunks:
+                new_chunks = [file_text]
+            
+            # Cache into session state
+            st.session_state.anchor_texts = new_chunks
+            st.session_state.anchor_embeddings = [model.encode(chunk, convert_to_numpy=True) for chunk in new_chunks]
+            st.success(f"Loaded custom anchor corpus with {len(st.session_state.anchor_embeddings)} reference chunk(s).")
+
 with col2:
     st.subheader("Execution & Real-Time Stream")
+    st.info(f"Active Anchor Corpus size: {len(st.session_state.anchor_embeddings)} chunk(s) loaded.")
+    
     if st.button("Execute Pipeline"):
-        anchor_texts = []
-        if uploaded_file is not None:
-            file_extension = uploaded_file.name.split('.')[-1].lower()
-            file_text = ""
-            if file_extension == 'pdf':
-                try:
-                    reader = pypdf.PdfReader(uploaded_file)
-                    for page in reader.pages:
-                        file_text += page.extract_text() or ""
-                except Exception as e:
-                    st.error(f"Error reading PDF: {e}")
-            elif file_extension in ['txt', 'csv']:
-                file_text = uploaded_file.read().decode("utf-8", errors="ignore")
-            
-            if file_text:
-                anchor_texts = [chunk.strip() for chunk in file_text.split("\n\n") if chunk.strip()]
-                if not anchor_texts:
-                    anchor_texts = [file_text]
-        
-        if not anchor_texts:
-            anchor_texts = [
-                "CIAT25 governance architecture, AI pipeline validation, token telemetry, and gate protocols.",
-                "Semantic cosine similarity, anchor chunks, trajectory sensor, and pre-generation filtering.",
-                "PostgreSQL pgvector, vector embeddings, anomaly detection, AI debt, and beautiful lie mitigation."
-            ]
-        
-        anchor_embeddings = [model.encode(chunk, convert_to_numpy=True) for chunk in anchor_texts]
-        st.info(f"Loaded active anchor corpus with {len(anchor_embeddings)} reference chunk(s).")
-        
         timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
         
         # 1. Execute Gate -1
@@ -167,7 +208,7 @@ with col2:
             st.error(f"Payload Dropped at Gate -1: {g1_msg}")
         else:
             # 2. Execute Gate 0 Trajectory Sensor
-            action, sim_score, g0_msg = gate_zero(clean_text, anchor_embeddings, threshold=g0_threshold)
+            action, sim_score, g0_msg = gate_zero(clean_text, st.session_state.anchor_embeddings, threshold=g0_threshold)
             
             if action == "DROP" and strict_mode:
                 log_entry = {
@@ -189,7 +230,7 @@ with col2:
                 claim_embeddings = [model.encode(claim, convert_to_numpy=True) for claim in claim_sentences]
                 
                 g1_engine = Gate1AnchorConfidenceEngine(min_claim_threshold=g1_threshold)
-                g1_result = g1_engine.compute_anchor_confidence(claim_embeddings, anchor_embeddings)
+                g1_result = g1_engine.compute_anchor_confidence(claim_embeddings, st.session_state.anchor_embeddings)
                 
                 log_id = hashlib.sha256(clean_text.encode()).hexdigest()[:10]
                 log_entry = {
